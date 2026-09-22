@@ -1,12 +1,385 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@600;700&display=swap");
 @import "tailwindcss";
+
+.inter-heading {
+	font-family: "Inter", sans-serif;
+}
+
+.welcome-page {
+	background-color: #f8fafc;
+	background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+	background-size: 24px 24px;
+}
+
+.light-welcome {
+	position: relative;
+	isolation: isolate;
+	background: #faf9f6;
+	overflow: hidden;
+}
+
+.light-welcome-glow {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	z-index: -1;
+	width: min(48rem, 80vw);
+	height: min(30rem, 65vh);
+	border-radius: 9999px;
+	background: rgba(253, 186, 116, 0.3);
+	filter: blur(120px);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+
+.aurora-slate {
+	background-color: #080b18;
+	background-image:
+		radial-gradient(circle at 18% 28%, rgba(99, 102, 241, 0.3), transparent 32%),
+		radial-gradient(circle at 82% 22%, rgba(139, 92, 246, 0.24), transparent 30%),
+		radial-gradient(circle at 52% 88%, rgba(67, 56, 202, 0.18), transparent 38%),
+		linear-gradient(135deg, #080b18 0%, #11142b 48%, #090b19 100%);
+}
+
+.dark-welcome {
+	position: relative;
+	isolation: isolate;
+	background: #09090b;
+	overflow: hidden;
+}
+
+.dark-welcome-glow {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	z-index: -1;
+	width: min(48rem, 80vw);
+	height: min(30rem, 65vh);
+	border-radius: 50%;
+	background: rgba(245, 158, 11, 0.1);
+	filter: blur(130px);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+
+.welcome-preview {
+	position: absolute;
+	top: 50%;
+	bottom: auto;
+	z-index: 2;
+	width: 13rem;
+	padding: 1rem;
+	border-radius: 1rem;
+	backdrop-filter: blur(12px);
+	box-shadow: 0 0.8rem 2rem rgba(120, 53, 15, 0.08);
+	font-family: "Inter", sans-serif;
+	font-size: 0.75rem;
+	transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.welcome-preview-left {
+	left: 3%;
+	transform: translateY(-56%) rotate(-2deg);
+}
+
+.welcome-preview-right {
+	right: 3%;
+	transform: translateY(-44%) rotate(2deg);
+}
+
+.welcome-preview-left:hover {
+	transform: translateY(calc(-56% - 0.2rem)) rotate(-2deg);
+}
+
+.welcome-preview-right:hover {
+	transform: translateY(calc(-44% - 0.2rem)) rotate(2deg);
+}
+
+.welcome-preview-light {
+	border: 1px solid rgba(231, 229, 228, 0.8);
+	background: rgba(255, 255, 255, 0.7);
+	color: #57534e;
+}
+
+.welcome-preview-dark {
+	border: 1px solid rgba(63, 63, 70, 0.8);
+	background: rgba(24, 24, 27, 0.7);
+	color: #d4d4d8;
+	box-shadow: 0 0.8rem 2rem rgba(0, 0, 0, 0.2);
+}
+
+.presence-dot {
+	display: block;
+	width: 0.45rem;
+	height: 0.45rem;
+	border-radius: 50%;
+	background: #f59e0b;
+	box-shadow: 0 0 0 0.2rem rgba(245, 158, 11, 0.14);
+}
+
+.preview-code-line {
+	margin-top: 0.35rem;
+	font-family: "Fira Code", "SFMono-Regular", monospace;
+	font-size: 0.67rem;
+	white-space: nowrap;
+}
+
+.preview-keyword {
+	color: #d97706;
+}
+
+.preview-string {
+	color: #059669;
+}
+
+.presence-avatar {
+	display: inline-flex;
+	width: 1.35rem;
+	height: 1.35rem;
+	align-items: center;
+	justify-content: center;
+	border: 2px solid currentColor;
+	border-radius: 50%;
+	font-size: 0.58rem;
+	font-weight: 700;
+}
+
+.presence-avatar-gold {
+	background: #fef3c7;
+	color: #b45309;
+}
+
+.presence-avatar-blue {
+	margin-left: -0.45rem;
+	background: #e0f2fe;
+	color: #0284c7;
+}
+
+.telemetry-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-top: 0.55rem;
+}
+
+.telemetry-row strong {
+	color: #b45309;
+	font-weight: 700;
+}
+
+.welcome-preview-dark .telemetry-row strong {
+	color: #fbbf24;
+}
+
+.telemetry-bar {
+	height: 0.3rem;
+	margin-top: 0.85rem;
+	overflow: hidden;
+	border-radius: 999px;
+	background: rgba(245, 158, 11, 0.15);
+}
+
+.telemetry-bar span {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-radius: inherit;
+	background: #f59e0b;
+}
+
+.dark-illustration .computer-screen,
+.dark-illustration .server {
+	border-color: #27272a;
+	background: rgba(24, 24, 27, 0.68);
+	box-shadow: inset 0 0 0 4px rgba(9, 9, 11, 0.72), 0 0 1.5rem rgba(245, 158, 11, 0.06);
+}
+
+.dark-illustration .computer-base {
+	background: #3f3f46;
+}
+
+.dark-illustration .network-line {
+	background: rgba(245, 158, 11, 0.45);
+	box-shadow: 0 0 0.5rem rgba(245, 158, 11, 0.25);
+}
+
+.cocreate-emblem {
+	display: inline-flex;
+	height: 2.25rem;
+	width: 2.25rem;
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	background: #fff;
+	color: #26313a;
+	box-shadow: 0 0.35rem 1rem rgba(0, 0, 0, 0.24);
+}
+
+.cocreate-wordmark {
+	color: #d8b878;
+	font-size: 1.25rem;
+	font-weight: 700;
+	letter-spacing: 0.015em;
+}
+
+.github-action {
+	position: relative;
+}
+
+.github-button {
+	display: inline-flex;
+	height: 2.25rem;
+	width: 2.25rem;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid;
+	border-radius: 50%;
+	transition: transform 180ms ease, background-color 180ms ease, color 180ms ease;
+}
+
+.github-button svg {
+	height: 1.2rem;
+	width: 1.2rem;
+}
+
+.github-button:hover {
+	transform: translateY(-2px);
+}
+
+.github-button-dark {
+	border-color: rgba(245, 158, 11, 0.3);
+	background: #18181b;
+	color: #fcd34d;
+}
+
+.github-button-dark:hover {
+	background: #27272a;
+	color: #fbbf24;
+}
+
+.github-button-light {
+	border-color: rgba(217, 119, 6, 0.25);
+	background: rgba(255, 255, 255, 0.72);
+	color: #92400e;
+}
+
+.github-button-light:hover {
+	background: #fff;
+	color: #78350f;
+}
+
+.github-tooltip {
+	position: absolute;
+	top: calc(100% + 0.6rem);
+	right: 0;
+	width: max-content;
+	padding: 0.4rem 0.65rem;
+	border: 1px solid rgba(245, 158, 11, 0.35);
+	border-radius: 0.5rem;
+	background: #18181b;
+	color: #fef3c7;
+	font-size: 0.75rem;
+	font-weight: 600;
+	opacity: 0;
+	transform: translateY(-0.25rem);
+	transition: opacity 160ms ease, transform 160ms ease;
+	pointer-events: none;
+	white-space: nowrap;
+}
+
+.linkedin-action {
+	position: relative;
+}
+
+.linkedin-button {
+	display: inline-flex;
+	height: 2.25rem;
+	width: 2.25rem;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid;
+	border-radius: 50%;
+	transition: transform 180ms ease, background-color 180ms ease, color 180ms ease;
+}
+
+.linkedin-button svg {
+	height: 1.1rem;
+	width: 1.1rem;
+}
+
+.linkedin-button:hover {
+	transform: translateY(-2px);
+}
+
+.linkedin-button-dark {
+	border-color: rgba(245, 158, 11, 0.3);
+	background: #18181b;
+	color: #fcd34d;
+}
+
+.linkedin-button-dark:hover {
+	background: #27272a;
+	color: #fbbf24;
+}
+
+.linkedin-button-light {
+	border-color: rgba(217, 119, 6, 0.25);
+	background: rgba(255, 255, 255, 0.72);
+	color: #92400e;
+}
+
+.linkedin-button-light:hover {
+	background: #fff;
+	color: #78350f;
+}
+
+.linkedin-tooltip {
+	position: absolute;
+	top: calc(100% + 0.6rem);
+	right: 0;
+	width: max-content;
+	padding: 0.4rem 0.65rem;
+	border: 1px solid rgba(245, 158, 11, 0.35);
+	border-radius: 0.5rem;
+	background: #18181b;
+	color: #fef3c7;
+	font-size: 0.75rem;
+	font-weight: 600;
+	opacity: 0;
+	transform: translateY(-0.25rem);
+	transition: opacity 160ms ease, transform 160ms ease;
+	pointer-events: none;
+	white-space: nowrap;
+}
+
+.linkedin-action:hover .linkedin-tooltip,
+.linkedin-action:focus-within .linkedin-tooltip {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+.github-action:hover .github-tooltip,
+.github-action:focus-within .github-tooltip {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+.welcome-card-light {
+	background: #eadfd3;
+}
+
+.username-field {
+	position: relative;
+	width: 16rem;
+}
 
 .collaboration-visual {
 	position: absolute;
 	top: 12%;
 	left: 50%;
 	display: flex;
-	align-items: center;
 	width: min(46rem, 82vw);
+	align-items: center;
 	justify-content: space-between;
 	transform: translateX(-50%);
 	opacity: 0.9;
@@ -132,7 +505,7 @@
 
 .people-visual {
 	position: absolute;
-	top: 28%;
+	top: 30%;
 	left: 50%;
 	display: flex;
 	align-items: center;
@@ -150,6 +523,11 @@
 	flex-direction: column;
 	align-items: center;
 	transition: transform 180ms ease;
+	animation: person-float 3.2s ease-in-out infinite;
+}
+
+.collaborator-amber {
+	animation-delay: -1.4s;
 }
 
 .thought-bubble {
@@ -353,6 +731,15 @@
 	box-shadow: 0 0 0.5rem #38bdf8;
 }
 
+@keyframes person-float {
+	0%, 100% {
+		transform: translateY(0) rotate(-1deg);
+	}
+	50% {
+		transform: translateY(-0.35rem) rotate(1deg);
+	}
+}
+
 @media (max-width: 640px) {
 	.collaboration-visual {
 		top: 10%;
@@ -366,3 +753,5 @@
 		transform: translateX(-50%) scale(0.78);
 	}
 }
+
+
