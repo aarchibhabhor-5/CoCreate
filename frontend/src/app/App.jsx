@@ -1,10 +1,11 @@
 import "./App.css"
-import {Editor} from "@monaco-editor/react"
-import {MonacoBinding} from "y-monaco"
-import { useRef, useMemo, useState , useEffect} from "react"
+import { Editor } from "@monaco-editor/react"
+import { MonacoBinding } from "y-monaco"
+import { useRef, useMemo, useState, useEffect } from "react"
 import * as monaco from "monaco-editor"
 import * as Y from "yjs"
-import {SocketIOProvider} from "y-socket.io"
+import { SocketIOProvider } from "y-socket.io"
+import { UserPeekingAnimal } from "./UsernameAnimals"
 
 const USER_COLORS = [
   "#8b5cf6",
@@ -88,17 +89,19 @@ const updateLineAuthors = (ydoc, lineAuthors, changes, author, lineCount) => {
 function App() {
   const editorRef = useRef(null)
   const decorationsRef = useRef([])
+  const isLocalChangeRef = useRef(false)
   const [theme, setTheme] = useState("light")
-  const [username, setUsername] = useState(()=> {
+  const [username, setUsername] = useState(() => {
     return new URLSearchParams(window.location.search).get("username") || ""
   })
   const [users, setUsers] = useState([])
   const [hoveredUser, setHoveredUser] = useState(null)
+  const [animalVisibilityMap, setAnimalVisibilityMap] = useState({})
 
   const ydoc = useMemo(() => new Y.Doc(), [])
   const yText = useMemo(() => ydoc.getText("monaco"), [ydoc])
   const lineAuthors = useMemo(() => ydoc.getMap("lineAuthors"), [ydoc])
-  const [, setLineAuthorsVersion] = useState(0)
+  const [lineAuthorsVersion, setLineAuthorsVersion] = useState(0)
 
   const provider = useMemo(() => {
     return new SocketIOProvider("http://localhost:3000", "monaco", ydoc, {
@@ -180,6 +183,12 @@ function App() {
       const currentModel = editor.getModel()
       if (!currentModel || !username || event.changes.length === 0) return
 
+      // Only attribute lines to the local user for locally-initiated edits.
+      // Remote Yjs sync events come in with isFlush=false from the binding;
+      // we detect them by checking the isLocalChangeRef flag that the
+      // MonacoBinding fires BEFORE and AFTER applying remote ops.
+      if (!isLocalChangeRef.current) return
+
       updateLineAuthors(
         ydoc,
         lineAuthors,
@@ -188,10 +197,21 @@ function App() {
         currentModel.getLineCount()
       )
     })
+    // Track whether the current content change originates locally.
+    // Monaco fires onDidChangeModelContent both for local keystrokes and for
+    // remote Yjs updates applied by MonacoBinding. We wrap the binding setup
+    // so that isLocalChangeRef is true only during user-driven edits.
+    editor.onKeyDown(() => { isLocalChangeRef.current = true })
+    editor.onKeyUp(() => { isLocalChangeRef.current = false })
+    // Also handle paste / drag-drop / cut — reset after a tick
+    editor.onDidPaste(() => {
+      isLocalChangeRef.current = true
+      setTimeout(() => { isLocalChangeRef.current = false }, 50)
+    })
 
     new MonacoBinding(
       yText,
-      editorRef.current.getModel(),
+      model,
       new Set([editorRef.current]),
       provider.awareness
     )
@@ -212,12 +232,68 @@ function App() {
     window.history.pushState({}, "", "?username=" + enteredName)
   }
 
+  // ── Real-Time Socket.IO Synchronization for Animal Visibility ──
+  useEffect(() => {
+    const socket = provider?.socket
+    if (!socket) return
+
+    if (username) {
+      socket.emit("register-user", { username })
+    }
+
+    const handleVisibilityState = (state) => {
+      if (state && typeof state === "object") {
+        setAnimalVisibilityMap((prev) => ({ ...prev, ...state }))
+      }
+    }
+
+    const handleVisibilityUpdated = ({ username: targetUser, visible }) => {
+      if (targetUser) {
+        setAnimalVisibilityMap((prev) => ({ ...prev, [targetUser]: visible }))
+      }
+    }
+
+    socket.on("animal-visibility-state", handleVisibilityState)
+    socket.on("animal-visibility-updated", handleVisibilityUpdated)
+
+    return () => {
+      socket.off("animal-visibility-state", handleVisibilityState)
+      socket.off("animal-visibility-updated", handleVisibilityUpdated)
+    }
+  }, [provider, username])
+
+  // ── Ownership-Validated Toggle For Active User's Companion Animal ──
+  const toggleMyAnimal = () => {
+    if (!username) return
+    const isCurrentlyVisible = Boolean(animalVisibilityMap[username])
+    const nextVisible = !isCurrentlyVisible
+
+    // Optimistic local update
+    setAnimalVisibilityMap((prev) => ({ ...prev, [username]: nextVisible }))
+
+    // Emit event to server (which validates that socket.username === username)
+    if (provider?.socket) {
+      provider.socket.emit("set-animal-visibility", {
+        username,
+        visible: nextVisible,
+      })
+    }
+
+    // Update awareness state for real-time peer visibility
+    provider.awareness.setLocalStateField("user", {
+      username,
+      color: getUserColor(username),
+      animalVisible: nextVisible,
+    })
+  }
+
   useEffect(() => {
     if (!username) return
 
     provider.awareness.setLocalStateField("user", {
       username,
       color: getUserColor(username),
+      animalVisible: false,
     })
 
     const updateUsers = () => {
@@ -228,6 +304,7 @@ function App() {
         .map((state) => ({
           ...state.user,
           color: state.user.color || getUserColor(state.user.username),
+          animalVisible: state.user.animalVisible,
         }))
 
       const uniqueUsers = Array.from(new Map(allUsers.map((user) => [user.username, user])).values())
@@ -251,29 +328,37 @@ function App() {
   }, [username, provider])
 
   useEffect(() => {
-    if (!editorRef.current) return
+    const editor = editorRef.current
+    if (!editor) return
 
     if (!hoveredUser) {
-      decorationsRef.current = editorRef.current.deltaDecorations(decorationsRef.current, [])
+      decorationsRef.current = editor.deltaDecorations(decorationsRef.current, [])
       return
     }
 
     const user = users.find((candidate) => candidate.username === hoveredUser)
     const color = user?.color || getUserColor(hoveredUser)
-    const model = editorRef.current.getModel()
+    const model = editor.getModel()
+
+    if (!model) return
+
     const newDecorations = Array.from(lineAuthors.entries())
       .filter(([lineNumber, author]) => {
-        return author === hoveredUser && model && Number(lineNumber) <= model.getLineCount()
+        return author === hoveredUser && Number(lineNumber) >= 1 && Number(lineNumber) <= model.getLineCount()
       })
       .map(([lineNumber]) => ({
         range: new monaco.Range(Number(lineNumber), 1, Number(lineNumber), 1),
         options: {
           isWholeLine: true,
           className: `user-highlight-${safeClassName(color)}`,
+          overviewRuler: {
+            color,
+            position: monaco.editor.OverviewRulerLane.Full,
+          },
         },
       }))
 
-    decorationsRef.current = editorRef.current.deltaDecorations(
+    decorationsRef.current = editor.deltaDecorations(
       decorationsRef.current,
       newDecorations
     )
@@ -286,11 +371,13 @@ function App() {
         )
       }
     }
-  }, [lineAuthors, users, hoveredUser, setLineAuthorsVersion])
+    // lineAuthorsVersion triggers re-run whenever lineAuthors map changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineAuthorsVersion, users, hoveredUser])
 
   const isDark = theme === "dark"
 
-  if(!username){
+  if (!username) {
     return (
       <main className={`h-screen w-full flex gap-4 p-4 items-center justify-center ${isDark ? "dark-welcome" : "light-welcome"}`}>
         <div className={isDark ? "dark-welcome-glow" : "light-welcome-glow"} aria-hidden="true" />
@@ -458,23 +545,13 @@ function App() {
               placeholder="Enter your username"
               className={`w-64 h-10 rounded-xl border py-2 pl-9 pr-2 focus:outline-none focus:ring-2 focus:border-transparent ${isDark ? "bg-zinc-900/80 border-zinc-800 text-zinc-100 placeholder:text-zinc-500 focus:ring-2 focus:ring-amber-400" : "bg-stone-50 border-stone-200 text-stone-900 placeholder:text-stone-400 focus:ring-2 focus:ring-amber-500 focus:bg-white"}`}
               name="username"
+              autoComplete="off"
             />
-            <div className="username-pet" aria-hidden="true">
-              <span className="pet-ear pet-ear-left" />
-              <span className="pet-ear pet-ear-right" />
-              <span className="pet-face">
-                <span className="pet-eye pet-eye-left" />
-                <span className="pet-eye pet-eye-right" />
-                <span className="pet-nose" />
-              </span>
-              <span className="pet-body" />
-              <span className="pet-tail" />
-            </div>
           </div>
           <button
             className={`w-64 h-10 p-2 rounded-xl font-semibold transition-all focus:outline-none ${isDark ? "bg-amber-400 text-zinc-950 hover:bg-amber-300 focus:ring-2 focus:ring-amber-400" : "bg-amber-500 hover:bg-amber-600 text-white focus:ring-2 focus:ring-amber-500"}`}
           >
-          Join
+            Join
           </button>
           <div className={`flex items-center justify-center gap-2 text-xs ${isDark ? "rounded-full border border-amber-500/30 bg-zinc-900 px-3 py-1 text-amber-300" : "bg-amber-100/60 text-amber-800 border border-amber-200/80 px-3 py-1 rounded-full text-xs font-medium"}`}>
             <span>⚡ Zero Latency</span>
@@ -489,90 +566,194 @@ function App() {
   }
 
   return (
-  <main
-   className={`h-screen w-full flex gap-4 p-4 ${isDark ? "dark-welcome" : "light-welcome"}`}>
-    {isDark && <div className="dark-welcome-glow" aria-hidden="true" />}
-    <div className="absolute right-5 top-5 z-10">
-      <button
-        type="button"
-        onClick={() => setTheme(isDark ? "light" : "dark")}
-        className={`rounded-full px-3 py-1.5 text-sm font-medium shadow-sm transition-all ${isDark ? "bg-zinc-900 text-amber-300 border border-amber-500/30 hover:bg-zinc-800" : "bg-white text-amber-800 hover:bg-amber-50 border border-amber-200/80"}`}
-      >
-        {isDark ? "Light mode" : "Dark mode"}
-      </button>
-    </div>
-    <style>{editorHighlightStyles}</style>
-    <aside className={`h-full w-1/4 rounded-2xl border p-4 shadow-sm backdrop-blur-md ${isDark ? "border-zinc-800 bg-zinc-900/80" : "border-amber-200/60 bg-white/90 shadow-amber-900/5"}`}>
-    <h2 className={`border-b px-2 pb-3 text-2xl font-bold ${isDark ? "border-zinc-800 text-zinc-100" : "border-amber-200/60 text-stone-900"}`}>Users</h2>
-    <ul className="mt-4 space-y-2">
-      {users.map((user, index) => {
-        const color = user.color || getUserColor(user.username)
+    <main
+      className={`h-screen w-full flex flex-col p-4 ${isDark ? "dark-welcome" : "light-welcome"}`}>
+      {isDark && <div className="dark-welcome-glow" aria-hidden="true" />}
+      <style>{editorHighlightStyles}</style>
 
-        return (
-          <li
-            key={index}
-            onMouseEnter={() => setHoveredUser(user.username)}
-            onMouseLeave={() => setHoveredUser(null)}
-            className={`cursor-pointer rounded-xl border px-3 py-2 transition-all duration-200 hover:-translate-y-0.5 ${isDark ? "text-zinc-200" : "text-slate-800"}`}
-            style={{
-              backgroundColor: hoveredUser === user.username ? colorToRgba(color, 0.28) : isDark ? colorToRgba(color, 0.18) : "rgba(255, 251, 235, 0.72)",
-              borderColor: hoveredUser === user.username ? color : isDark ? "rgba(63, 63, 70, 0.8)" : "rgba(253, 230, 138, 0.8)",
-              boxShadow: hoveredUser === user.username ? `0 0 0 1px ${color}, 0 8px 24px ${colorToRgba(color, 0.18)}` : "none",
-              color: hoveredUser === user.username ? color : isDark ? color : "#334155",
-            }}
+      {/* ── Studio Top Header (Controls & Dark Mode, Separated from Workspace) ── */}
+      <header
+        className={`studio-top-header ${isDark ? "border-zinc-800 bg-zinc-900/80 text-zinc-100" : "border-amber-200/70 bg-white/80 text-stone-900 shadow-sm shadow-amber-900/5"}`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isDark ? "bg-amber-400/15 text-amber-300 border border-amber-500/30" : "bg-amber-100/90 text-amber-900 border border-amber-200"}`}>
+            <span>⚡ CoCreate Studio</span>
+          </div>
+          <span className="hidden sm:inline-block text-xs font-medium opacity-60">
+            Room: <span className="font-semibold">monaco</span>
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          {/* User-Specific Animal Control: Only controls the current user's animal */}
+          <button
+            type="button"
+            onClick={toggleMyAnimal}
+            className={`animal-visibility-btn ${Boolean(animalVisibilityMap[username])
+                ? isDark
+                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
+                  : "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                : isDark
+                  ? "bg-zinc-800/80 text-zinc-400 border-zinc-700 hover:bg-zinc-700 text-zinc-300"
+                  : "bg-stone-100 text-stone-600 border-stone-300 hover:bg-stone-200"
+              }`}
+            title={
+              Boolean(animalVisibilityMap[username])
+                ? "Click to hide your companion animal"
+                : "Click to show your companion animal"
+            }
           >
-            {user.username}
-          </li>
-        )
-      })}
-    </ul>
-    </aside>
-    <section className={`w-3/4 rounded-2xl border backdrop-blur-md ${isDark ? "border-zinc-800 bg-zinc-900/80" : "border-amber-200/60 bg-white/90 shadow-xl shadow-amber-900/5"}`}>
-      <Editor
-        height="100%"
-        defaultLanguage="javascript"
-        language="javascript"
-        defaultValue={'// Write your code here\n\nif (true) {\n  console.log("Hello");\n}'}
-        theme={isDark ? "vs-dark" : "vs"}
-        onMount={handleMount}
-        options={{
-          tabSize: 2,
-          insertSpaces: true,
-          detectIndentation: false,
-          autoIndent: "full",
-          formatOnType: true,
-          formatOnPaste: true,
-          wordWrap: "on",
-          minimap: { enabled: false },
-          autoClosingBrackets: "languageDefined",
-          autoClosingQuotes: "languageDefined",
-          bracketPairColorization: { enabled: true },
-          fontFamily: "'Fira Code', 'JetBrains Mono', 'SFMono-Regular', monospace",
-          fontLigatures: true,
-          fontSize: 16,
-          lineHeight: 1.7,
-          letterSpacing: 0.1,
-          lineNumbersMinChars: 3,
-          renderLineHighlight: "all",
-          scrollBeyondLastLine: false,
-          roundedSelection: true,
-          automaticLayout: true,
-          theme: isDark ? "vs-dark" : "vs",
-          colors: {
-            "editor.background": isDark ? "#18181b" : "#fffdf8",
-            "editorLineNumber.foreground": isDark ? "#71717a" : "#a8a29e",
-            "editorLineNumber.activeForeground": isDark ? "#d4d4d8" : "#57534e",
-            "editor.selectionBackground": isDark ? "#3f3f46" : "#fde68a",
-            "editor.lineHighlightBackground": isDark ? "#27272a" : "#fffbeb",
-            "editorCursor.foreground": isDark ? "#fbbf24" : "#d97706",
-            "editorWhitespace.foreground": isDark ? "#3f3f46" : "#e7e5e4",
-          },
-          extraEditorClassName: "vscode-like-editor",
-        }}
-      />
-    </section>
-   </main>
-      
+            <span>{Boolean(animalVisibilityMap[username]) ? "🐾" : "🚫"}</span>
+            <span>{Boolean(animalVisibilityMap[username]) ? "Hide My Animal" : "Show My Animal"}</span>
+          </button>
+
+          {/* Dark Mode toggle */}
+          <button
+            type="button"
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            className={`animal-visibility-btn ${isDark ? "bg-zinc-800 text-amber-300 border-amber-500/30 hover:bg-zinc-700" : "bg-white text-amber-800 hover:bg-amber-50 border-amber-200/80"}`}
+          >
+            <span>{isDark ? "☀️" : "🌙"}</span>
+            <span>{isDark ? "Light mode" : "Dark mode"}</span>
+          </button>
+        </div>
+      </header>
+
+      {/* ── Main Workspace Layout (Editor Lowered & Protected From Overlap) ── */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        <aside className={`h-full w-1/4 rounded-2xl border p-4 shadow-sm backdrop-blur-md flex flex-col justify-between overflow-hidden ${isDark ? "border-zinc-800 bg-zinc-900/80" : "border-amber-200/60 bg-white/90 shadow-amber-900/5"}`}>
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="flex items-center justify-between border-b px-2 pb-3">
+              <h2 className={`text-2xl font-bold ${isDark ? "text-zinc-100" : "text-stone-900"}`}>Users</h2>
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${isDark ? "bg-amber-400/15 text-amber-300 border border-amber-500/30" : "bg-amber-100/80 text-amber-800 border border-amber-200"}`}>
+                {users.length} online
+              </span>
+            </div>
+            <ul className="mt-6 space-y-5">
+              {users.map((user, index) => {
+                const color = user.color || getUserColor(user.username)
+                const isHovered = hoveredUser === user.username
+                const isAnimalVisible = Boolean(animalVisibilityMap[user.username] ?? user.animalVisible)
+                const authoredLineCount = Array.from(lineAuthors.entries()).filter(
+                  ([, author]) => author === user.username
+                ).length
+
+                return (
+                  <li
+                    key={index}
+                    onMouseEnter={() => setHoveredUser(user.username)}
+                    onMouseLeave={() => setHoveredUser(null)}
+                    className={`user-list-item relative overflow-hidden cursor-pointer rounded-xl border px-3.5 py-2.5 transition-all duration-300 min-h-[58px] flex flex-col justify-center ${isDark ? "text-zinc-200" : "text-slate-800"}`}
+                    style={{
+                      backgroundColor: isHovered ? colorToRgba(color, 0.28) : isDark ? colorToRgba(color, 0.1) : "rgba(255, 251, 235, 0.72)",
+                      borderColor: isHovered ? color : isDark ? "rgba(63, 63, 70, 0.8)" : "rgba(253, 230, 138, 0.8)",
+                      boxShadow: isHovered ? `0 0 0 1px ${color}, 0 8px 24px ${colorToRgba(color, 0.18)}` : "none",
+                      transform: isHovered ? "translateY(-2px)" : "none",
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2 relative z-10 w-full">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {/* Color swatch — unique per user */}
+                        <span
+                          className="user-color-dot"
+                          style={{
+                            background: color,
+                            boxShadow: isHovered ? `0 0 6px 2px ${colorToRgba(color, 0.55)}` : "none",
+                          }}
+                          aria-hidden="true"
+                        />
+                        <span
+                          className="font-semibold truncate text-sm"
+                          style={{ color: isHovered ? color : isDark ? color : "#334155" }}
+                        >
+                          {user.username}
+                          {user.username === username && (
+                            <span
+                              className="ml-1.5 text-xs opacity-60 font-normal"
+                              style={{ color: isDark ? "#71717a" : "#a8a29e" }}
+                            >
+                              (you)
+                            </span>
+                          )}
+                        </span>
+                        {/* Line count badge */}
+                        {authoredLineCount > 0 && (
+                          <span
+                            className="user-line-badge"
+                            style={{
+                              background: colorToRgba(color, 0.25),
+                              color,
+                              border: `1px solid ${colorToRgba(color, 0.45)}`,
+                            }}
+                          >
+                            {authoredLineCount}L
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Unique animated animal completely contained inside the box on the right */}
+                      <div className="user-inside-animal-box flex-shrink-0 relative overflow-hidden flex items-center justify-end">
+                        <UserPeekingAnimal
+                          index={index}
+                          name={user.username}
+                          isHovered={isHovered}
+                          isVisible={isAnimalVisible}
+                        />
+                      </div>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </aside>
+        <section className={`w-3/4 rounded-2xl border backdrop-blur-md ${isDark ? "border-zinc-800 bg-zinc-900/80" : "border-amber-200/60 bg-white/90 shadow-xl shadow-amber-900/5"}`}>
+          <Editor
+            height="100%"
+            defaultLanguage="javascript"
+            language="javascript"
+            defaultValue={'// Write your code here\n\nif (true) {\n  console.log("Hello");\n}'}
+            theme={isDark ? "vs-dark" : "vs"}
+            onMount={handleMount}
+            options={{
+              tabSize: 2,
+              insertSpaces: true,
+              detectIndentation: false,
+              autoIndent: "full",
+              formatOnType: true,
+              formatOnPaste: true,
+              wordWrap: "on",
+              minimap: { enabled: false },
+              autoClosingBrackets: "languageDefined",
+              autoClosingQuotes: "languageDefined",
+              bracketPairColorization: { enabled: true },
+              fontFamily: "'Fira Code', 'JetBrains Mono', 'SFMono-Regular', monospace",
+              fontLigatures: true,
+              fontSize: 16,
+              lineHeight: 1.7,
+              letterSpacing: 0.1,
+              lineNumbersMinChars: 3,
+              renderLineHighlight: "all",
+              scrollBeyondLastLine: false,
+              roundedSelection: true,
+              automaticLayout: true,
+              theme: isDark ? "vs-dark" : "vs",
+              colors: {
+                "editor.background": isDark ? "#18181b" : "#fffdf8",
+                "editorLineNumber.foreground": isDark ? "#71717a" : "#a8a29e",
+                "editorLineNumber.activeForeground": isDark ? "#d4d4d8" : "#57534e",
+                "editor.selectionBackground": isDark ? "#3f3f46" : "#fde68a",
+                "editor.lineHighlightBackground": isDark ? "#27272a" : "#fffbeb",
+                "editorCursor.foreground": isDark ? "#fbbf24" : "#d97706",
+                "editorWhitespace.foreground": isDark ? "#3f3f46" : "#e7e5e4",
+              },
+              extraEditorClassName: "vscode-like-editor",
+            }}
+          />
+        </section>
+      </div>
+    </main>
+
   )
 
 }
