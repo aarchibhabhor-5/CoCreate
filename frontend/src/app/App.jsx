@@ -104,7 +104,7 @@ function App() {
   const [lineAuthorsVersion, setLineAuthorsVersion] = useState(0)
 
   const provider = useMemo(() => {
-    return new SocketIOProvider("http://localhost:3000", "monaco", ydoc, {
+    return new SocketIOProvider("/", "monaco", ydoc, {
       autocorrect: true,
     })
   }, [ydoc])
@@ -590,12 +590,12 @@ function App() {
             type="button"
             onClick={toggleMyAnimal}
             className={`animal-visibility-btn ${Boolean(animalVisibilityMap[username])
-                ? isDark
-                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
-                  : "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
-                : isDark
-                  ? "bg-zinc-800/80 text-zinc-400 border-zinc-700 hover:bg-zinc-700 text-zinc-300"
-                  : "bg-stone-100 text-stone-600 border-stone-300 hover:bg-stone-200"
+              ? isDark
+                ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25"
+                : "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+              : isDark
+                ? "bg-zinc-800/80 text-zinc-400 border-zinc-700 hover:bg-zinc-700 text-zinc-300"
+                : "bg-stone-100 text-stone-600 border-stone-300 hover:bg-stone-200"
               }`}
             title={
               Boolean(animalVisibilityMap[username])
